@@ -40,7 +40,7 @@ This project is a **movie recommendation system** built using Node.js, Express, 
 movie-recommendation-api/
 ├── dataset/
 │   ├── raw/
-│   │   ├── movies.json
+│   │   ├── metadata.json
 │   │   ├── tags.json
 │   ├── scores/
 │   │   ├── tagdl.csv
