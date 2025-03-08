@@ -1,13 +1,12 @@
 import { MovieDictionary, TagInfo } from "../types";
 import fs from "fs";
-import fsPromises from "fs/promises";
 import readline from "readline";
 import path from "path";
 
 // Constants for vector size and file paths
 const VECTOR_SIZE = 1094;
 const TAGS = "../../dataset/raw/tags.json";
-const MOVIES = "../../dataset/raw/movies.json";
+const MOVIES = "../../dataset/raw/metadata.json";
 const SCORES = "../../dataset/scores/tagdl.csv";
 
 /**
@@ -16,15 +15,26 @@ const SCORES = "../../dataset/scores/tagdl.csv";
  */
 async function loadTagMap(): Promise<Map<string, number>> {
   const filePath = path.resolve(__dirname, TAGS);
-  const rawTags = await fsPromises.readFile(filePath, "utf-8");
-  const tags: TagInfo[] = JSON.parse(rawTags);
+  const fileStream = fs.createReadStream(filePath, "utf-8");
+  const rl = readline.createInterface({
+    input: fileStream,
+    crlfDelay: Infinity,
+  });
 
   // Create a map to store tag names and their corresponding vector indices
   const tagMap = new Map<string, number>();
-  tags.forEach((tagInfo, index) => {
-    tagMap.set(tagInfo.tag.toLowerCase(), index);
-  });
+  let index = 0; // Use the position in the file as the index
 
+  // Process each line as a separate JSON object
+  for await (const line of rl) {
+    try {
+      const tagInfo: TagInfo = JSON.parse(line);
+      tagMap.set(tagInfo.tag.toLowerCase(), index);
+      index++;
+    } catch (error) {
+      console.error("Error parsing tag data:", error);
+    }
+  }
   return tagMap;
 }
 
@@ -37,25 +47,34 @@ export async function loadDataset(): Promise<MovieDictionary> {
   let tagMap: Map<string, number>;
 
   try {
-    // Load movie metadata and tags simultaneously using Promise.all
-    const [rawMovies, loadedTagMap] = await Promise.all([
-      fsPromises.readFile(path.resolve(__dirname, MOVIES), "utf-8"),
-      loadTagMap(),
-    ]);
+    // Load the tag map
+    tagMap = await loadTagMap();
 
-    tagMap = loadedTagMap;
-    const moviesData: { item_id: string; title: string }[] =
-      JSON.parse(rawMovies);
+    // Read the metadata.json file line by line
+    const filePath = path.resolve(__dirname, MOVIES);
+    const fileStream = fs.createReadStream(filePath, "utf-8");
+    const rl = readline.createInterface({
+      input: fileStream,
+      crlfDelay: Infinity,
+    });
 
-    // Initialize movies with empty vectors
-    for (const movie of moviesData) {
-      movies[movie.item_id] = {
-        id: movie.item_id,
-        title: movie.title,
-        vector: new Float32Array(VECTOR_SIZE),
-      };
+    // Process each line as a separate JSON object
+    for await (const line of rl) {
+      try {
+        const movieData = JSON.parse(line);
+        const movieId = movieData.item_id.toString();
+
+        // Add the movie to the dictionary
+        movies[movieId] = {
+          id: movieId,
+          title: movieData.title,
+          vector: new Float32Array(VECTOR_SIZE),
+        };
+      } catch (error) {
+        console.error("Error parsing movie data:", error);
+      }
     }
-    console.log(`Loaded metadata for ${moviesData.length} movies`);
+    console.log(`Loaded metadata for ${Object.keys(movies).length} movies`);
   } catch (error) {
     console.error("Error loading movie metadata:", error);
     return {};
