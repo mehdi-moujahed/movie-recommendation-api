@@ -1,5 +1,7 @@
 import { Movie, MovieDictionary, KdTreeNode } from "../types";
 
+type MovieWithSimilarity = Movie & { similarity: number };
+
 /**
  * A vector database for efficient nearest-neighbor search using a custom k-d tree.
  */
@@ -62,7 +64,7 @@ export class VectorDatabase {
    * And returns a list of the k nearest movies, sorted by similarity.
    */
   public searchKNN(query: Movie, k: number = 10): Movie[] {
-    const results: Movie[] = [];
+    const results: MovieWithSimilarity[] = [];
     this.searchNode(query, k, this.kdTree, results);
     return results
       .sort(
@@ -79,19 +81,16 @@ export class VectorDatabase {
     query: Movie,
     k: number,
     node?: KdTreeNode,
-    results: Movie[] = []
+    results: MovieWithSimilarity[] = []
   ) {
     if (!node) return;
-
-    results.push(node.movie);
+    
+    results.push({...node.movie, similarity: this.cosineSimilarity(query, node.movie)});
 
     // If we have too many results, keep only the top k
     if (results.length > k * 2) {
       results
-        .sort(
-          (a, b) =>
-            this.cosineSimilarity(query, b) - this.cosineSimilarity(query, a)
-        )
+        .sort((a, b) => b.similarity - a.similarity)
         .splice(k);
     }
 
@@ -105,9 +104,7 @@ export class VectorDatabase {
     this.searchNode(query, k, nextBranch, results); // Search the closer branch
 
     // Only search the other branch if it's within a reasonable distance
-    if (
-      Math.abs(diff) < (results[results.length - 1]?.vector[axis] ?? Infinity)
-    ) {
+    if (results.length < k || Math.abs(diff) < results[k - 1].similarity) {
       this.searchNode(query, k, otherBranch, results);
     }
   }
